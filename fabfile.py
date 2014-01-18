@@ -8,5 +8,5 @@ def deploy():
         run("git pull")
         run("sudo docker build -t rymurr/ghost-cort .")
 
-def run(host="localhost", port=4001):
+def rundocker(host="localhost", port=4001):
     run("sudo docker run -p 2368 -d -e ETCDHOST=host -e ETCDPORT=port rymurr/ghost-cort")

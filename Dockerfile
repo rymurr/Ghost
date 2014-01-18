@@ -5,6 +5,8 @@ run apt-get update
 run apt-get install -y build-essential 
 run apt-get install -y python python-dev python-setuptools
 run apt-get install -y curl 
+run apt-get install -y openssh-server
+run mkdir /var/run/sshd
 run easy_install pip
 run pip install setuptools --no-use-wheel --upgrade
 run pip install boto
@@ -40,5 +42,5 @@ volume /ghost/content/data
 workdir /ghost
 expose 2368
 
-cmd ["runApp.sh"]
+cmd ["bash", "runApp.sh"]
 

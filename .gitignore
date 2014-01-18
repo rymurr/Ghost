@@ -62,3 +62,6 @@ config.js
 
 # Coverage reports
 coverage.html
+
+secret.py
+*.pyc

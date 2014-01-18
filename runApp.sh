@@ -12,5 +12,6 @@ key=`curl --key client.key --cert client.crt --cacert server.pem -L https://$ETC
 #add SES config to config
 sed "s|AWS_SECRET_KEY|$secret|" config.js.template | sed "s|AWS_KEY_ID|$key|" >config.js
 #start ghost
+/usr/sbin/sshd
 npm start
 

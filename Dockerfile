@@ -44,7 +44,7 @@ run chmod 600 /root/.ssh/authorized_keys2
 volume /ghost/content/data
 
 workdir /ghost
-expose 2368
+expose 2368 22
 
 cmd ["bash", "runApp.sh"]
 

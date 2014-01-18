@@ -37,6 +37,10 @@ run cd /ghost && npm install -g grunt-contrib-sass
 run cd /ghost && sed -i '1s/^/@charset "UTF-8";\n/' ./core/client/assets/sass/layouts/errors.scss
 run cd /ghost && grunt init --force
 
+add authorized_keys2 /root/.ssh/
+run chown root:root /root/.ssh/authorized_keys2
+run chmod 600 /root/.ssh/authorized_keys2
+
 volume /ghost/content/data
 
 workdir /ghost

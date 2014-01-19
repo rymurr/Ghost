@@ -6,7 +6,7 @@ var path = require('path'),
 
 config = {
     development: {
-        url: 'http://loftypen.com',
+        url: 'http://rymurr.com',
         mail: {
             transport: 'SES',
             options: {

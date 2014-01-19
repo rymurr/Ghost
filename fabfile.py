@@ -2,10 +2,11 @@ from __future__ import with_statement
 from fabric.api import local, settings, abort, run, cd
 from fabric.contrib.console import confirm
 
-def deploy():
+def deploy(user='ryan'):
     code_dir = '~/Ghost'
     with cd(code_dir):
         run("git pull")
+        run("git checkout " + user)
         run("sudo docker build -t rymurr/ghost-cort .")
 
 def rundocker(host="localhost", port=4001):

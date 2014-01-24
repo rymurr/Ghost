@@ -45,6 +45,7 @@ form {
     }
 
     p {
+        max-width: 400px;
         color: darken($brown, 5%);
         font-size: 1em;
         margin: 0;
@@ -91,7 +92,7 @@ textarea {
     max-width: 340px;
     min-width: 250px;
     height: auto;
-    min-height: 80px;
+    min-height: 6.5em;
 }
 
 input, select, textarea {
@@ -174,6 +175,7 @@ input[type="checkbox"] {
         border-top: none;
         border-right: none;
         @include transform(rotate(-45deg));
+        @include transition(all 0.2s ease);
     }
 }
 
@@ -222,6 +224,11 @@ input[type=checkbox]:checked + .checkbox:after { opacity: 1; }
 
     &:active {
         box-shadow: rgba(0,0,0,0.3) 0 1px 3px inset;
+    }
+
+    &:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
 
     &.large {

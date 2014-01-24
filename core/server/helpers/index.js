@@ -1,20 +1,22 @@
-var _               = require('underscore'),
-    moment          = require('moment'),
-    downsize        = require('downsize'),
-    path            = require('path'),
-    when            = require('when'),
+var downsize        = require('downsize'),
     hbs             = require('express-hbs'),
+    moment          = require('moment'),
+    path            = require('path'),
     polyglot        = require('node-polyglot').instance,
-    template        = require('./template'),
-    errors          = require('../errorHandling'),
-    models          = require('../models'),
-    filters         = require('../filters'),
-    packageInfo     = require('../../../package.json'),
-    version         = packageInfo.version,
-    scriptTemplate  = _.template('<script src="<%= source %>?v=<%= version %>"></script>'),
-    isProduction    = process.env.NODE_ENV === 'production',
+    _               = require('underscore'),
+    when            = require('when'),
+
     api             = require('../api'),
     config          = require('../config'),
+    errors          = require('../errorHandling'),
+    filters         = require('../filters'),
+    template        = require('./template'),
+    schema          = require('../data/schema').checks,
+
+    assetTemplate   = _.template('<%= source %>?v=<%= version %>'),
+    scriptTemplate  = _.template('<script src="<%= source %>?v=<%= version %>"></script>'),
+    isProduction    = process.env.NODE_ENV === 'production',
+
     coreHelpers     = {},
     registerHelpers;
 
@@ -78,7 +80,7 @@ coreHelpers.encode = function (context, str) {
 //
 coreHelpers.pageUrl = function (context, block) {
     /*jslint unparam:true*/
-    return context === 1 ? '/' : ('/page/' + context + '/');
+    return config.paths().subdir + (context === 1 ? '/' : ('/page/' + context + '/'));
 };
 
 // ### URL helper
@@ -91,36 +93,13 @@ coreHelpers.pageUrl = function (context, block) {
 // i.e. If inside a post context will return post permalink
 // absolute flag outputs absolute URL, else URL is relative
 coreHelpers.url = function (options) {
-    var output = '',
-        self = this,
-        tags = {
-            year: function () { return self.created_at.getFullYear(); },
-            month: function () { return self.created_at.getMonth() + 1; },
-            day: function () { return self.created_at.getDate(); },
-            slug: function () { return self.slug; },
-            id: function () { return self.id; }
-        },
-        isAbsolute = options && options.hash.absolute;
-    return api.settings.read('permalinks').then(function (permalinks) {
-        if (isAbsolute) {
-            output += config().url.replace(/\/$/, '');
-        } else {
-            output += config.paths().subdir;
-        }
-        if (models.isPost(self)) {
-            if (self.page === 1) {
-                output += '/:slug/';
-            } else {
-                output += permalinks.value;
-            }
-            output = output.replace(/(:[a-z]+)/g, function (match) {
-                if (_.has(tags, match.substr(1))) {
-                    return tags[match.substr(1)]();
-                }
-            });
-        }
-        return output;
-    });
+    var absolute = options && options.hash.absolute;
+
+    if (schema.isPost(this)) {
+        return config.paths.urlForPost(api.settings, this, absolute);
+    }
+
+    return when(config.paths.urlFor(this, absolute));
 };
 
 // ### Asset helper
@@ -128,7 +107,6 @@ coreHelpers.url = function (options) {
 // *Usage example:*
 // `{{asset "css/screen.css"}}`
 // `{{asset "css/screen.css" ghost="true"}}`
-//
 // Returns the path to the specified asset. The ghost
 // flag outputs the asset path for the Ghost admin
 coreHelpers.asset = function (context, options) {
@@ -137,7 +115,7 @@ coreHelpers.asset = function (context, options) {
 
     output += config.paths().subdir + '/';
 
-    if (!context.match(/^shared/)) {
+    if (!context.match(/^favicon\.ico$/) && !context.match(/^shared/) && !context.match(/^asset/)) {
         if (isAdmin) {
             output += 'ghost/';
         } else {
@@ -145,7 +123,17 @@ coreHelpers.asset = function (context, options) {
         }
     }
 
+    // Get rid of any leading slash on the context
+    context = context.replace(/^\//, '');
     output += context;
+
+    if (!context.match(/^favicon\.ico$/)) {
+        output = assetTemplate({
+            source: output,
+            version: coreHelpers.assetHash
+        });
+    }
+
     return new hbs.handlebars.SafeString(output);
 };
 
@@ -208,7 +196,13 @@ coreHelpers.content = function (options) {
         truncateOptions[key] = parseInt(truncateOptions[key], 10);
     });
 
-    if (truncateOptions.words || truncateOptions.characters) {
+    if (truncateOptions.hasOwnProperty('words') || truncateOptions.hasOwnProperty('characters')) {
+        // Due to weirdness in downsize the 'words' option
+        // must be passed as a string. refer to #1796
+        // TODO: when downsize fixes this quirk remove this hack.
+        if (truncateOptions.hasOwnProperty('words')) {
+            truncateOptions.words = truncateOptions.words.toString();
+        }
         return new hbs.handlebars.SafeString(
             downsize(this.html, truncateOptions)
         );
@@ -284,8 +278,8 @@ coreHelpers.ghostScriptTags = function () {
 
     scriptFiles = _.map(scriptFiles, function (fileName) {
         return scriptTemplate({
-            source: config.paths().subdir + '/built/scripts/' + fileName,
-            version: version
+            source: config.paths().subdir + '/ghost/scripts/' + fileName,
+            version: coreHelpers.assetHash
         });
     });
 
@@ -302,9 +296,9 @@ coreHelpers.body_class = function (options) {
         tags = this.post && this.post.tags ? this.post.tags : this.tags || [],
         page = this.post && this.post.page ? this.post.page : this.page || false;
 
-    if (_.isString(this.ghostRoot) && this.ghostRoot.match(/\/page/)) {
+    if (_.isString(this.relativeUrl) && this.relativeUrl.match(/\/page/)) {
         classes.push('archive-template');
-    } else if (!this.ghostRoot || this.ghostRoot === '/' || this.ghostRoot === '') {
+    } else if (!this.relativeUrl || this.relativeUrl === '/' || this.relativeUrl === '') {
         classes.push('home-template');
     } else {
         classes.push('post-template');
@@ -351,7 +345,8 @@ coreHelpers.post_class = function (options) {
 
 coreHelpers.ghost_head = function (options) {
     /*jslint unparam:true*/
-    var blog = config.theme(),
+    var self = this,
+        blog = config.theme(),
         head = [],
         majorMinor = /^(\d+\.)?(\d+)/,
         trimmedVersion = this.version;
@@ -361,13 +356,13 @@ coreHelpers.ghost_head = function (options) {
     head.push('<meta name="generator" content="Ghost ' + trimmedVersion + '" />');
 
     head.push('<link rel="alternate" type="application/rss+xml" title="'
-        + _.escape(blog.title)  + '" href="' + config.paths().subdir + '/rss/' + '">');
+        + _.escape(blog.title)  + '" href="' + config.paths.urlFor('rss') + '">');
 
-    if (this.ghostRoot) {
-        head.push('<link rel="canonical" href="' + config().url + this.ghostRoot + '" />');
-    }
+    return coreHelpers.url.call(self, {hash: {absolute: true}}).then(function (url) {
+        head.push('<link rel="canonical" href="' + url + '" />');
 
-    return filters.doFilter('ghost_head', head).then(function (head) {
+        return filters.doFilter('ghost_head', head);
+    }).then(function (head) {
         var headString = _.reduce(head, function (memo, item) { return memo + '\n' + item; }, '');
         return new hbs.handlebars.SafeString(headString.trim());
     });
@@ -379,7 +374,7 @@ coreHelpers.ghost_foot = function (options) {
 
     foot.push(scriptTemplate({
         source: config.paths().subdir + '/shared/vendor/jquery/jquery.js',
-        version: this.version
+        version: coreHelpers.assetHash
     }));
 
     return filters.doFilter('ghost_foot', foot).then(function (foot) {
@@ -393,8 +388,8 @@ coreHelpers.meta_title = function (options) {
     var title,
         blog;
 
-    if (_.isString(this.ghostRoot)) {
-        if (!this.ghostRoot || this.ghostRoot === '/' || this.ghostRoot === '' || this.ghostRoot.match(/\/page/)) {
+    if (_.isString(this.relativeUrl)) {
+        if (!this.relativeUrl || this.relativeUrl === '/' || this.relativeUrl === '' || this.relativeUrl.match(/\/page/)) {
             blog = config.theme();
             title = blog.title;
         } else {
@@ -413,8 +408,8 @@ coreHelpers.meta_description = function (options) {
     var description,
         blog;
 
-    if (_.isString(this.ghostRoot)) {
-        if (!this.ghostRoot || this.ghostRoot === '/' || this.ghostRoot === '' || this.ghostRoot.match(/\/page/)) {
+    if (_.isString(this.relativeUrl)) {
+        if (!this.relativeUrl || this.relativeUrl === '/' || this.relativeUrl === '' || this.relativeUrl.match(/\/page/)) {
             blog = config.theme();
             description = blog.description;
         } else {
@@ -557,6 +552,34 @@ coreHelpers.helperMissing = function (arg) {
     errors.logError('Missing helper: "' + arg + '"');
 };
 
+// ## Admin URL helper
+// uses urlFor to generate a URL for either the admin or the frontend.
+coreHelpers.adminUrl = function (options) {
+    var absolute = options && options.hash && options.hash.absolute,
+        // Ghost isn't a named route as currently it violates the must start-and-end with slash rule
+        context = !options || !options.hash || !options.hash.frontend ? {relativeUrl: '/ghost'} : 'home';
+
+    return config.paths.urlFor(context, absolute);
+};
+
+coreHelpers.updateNotification = function () {
+    var output = '';
+
+    if (config().updateCheck === false || !this.currentUser) {
+        return when(output);
+    }
+
+    return api.settings.read('displayUpdateNotification').then(function (display) {
+        if (display && display.value && display.value === 'true') {
+            output = '<div class="notification-success">' +
+                'A new version of Ghost is available! Hot damn. ' +
+                '<a href="http://ghost.org/download">Upgrade now</a></div>';
+        }
+
+        return output;
+    });
+};
+
 // Register an async handlebars helper for a given handlebars instance
 function registerAsyncHelper(hbs, name, fn) {
     hbs.registerAsyncHelper(name, function (options, cb) {
@@ -569,7 +592,6 @@ function registerAsyncHelper(hbs, name, fn) {
         });
     });
 }
-
 
 // Register a handlebars helper for themes
 function registerThemeHelper(name, fn) {
@@ -592,11 +614,13 @@ function registerAsyncAdminHelper(name, fn) {
 }
 
 
-
-registerHelpers = function (adminHbs) {
+registerHelpers = function (adminHbs, assetHash) {
 
     // Expose hbs instance for admin
     coreHelpers.adminHbs = adminHbs;
+
+    // Store hash for assets
+    coreHelpers.assetHash = assetHash;
 
 
     // Register theme helpers
@@ -644,8 +668,9 @@ registerHelpers = function (adminHbs) {
 
     registerAdminHelper('fileStorage', coreHelpers.fileStorage);
 
-    registerAsyncAdminHelper('url', coreHelpers.url);
+    registerAdminHelper('adminUrl', coreHelpers.adminUrl);
 
+    registerAsyncAdminHelper('updateNotification', coreHelpers.updateNotification);
 };
 
 module.exports = coreHelpers;

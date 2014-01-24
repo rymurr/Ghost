@@ -8,7 +8,7 @@ var _               = require('underscore'),
     defaultSettings = require('../default-settings'),
     Settings        = require('../../models/settings').Settings,
     fixtures        = require('../fixtures'),
-    schema          = require('../schema'),
+    schema          = require('../schema').tables,
 
     initialVersion  = '000',
     schemaTables    = _.keys(schema),
@@ -144,9 +144,7 @@ function getTablesFromSqlite3() {
 
 function getTablesFromPgSQL() {
     return knex.raw("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'").then(function (response) {
-        return _.flatten(_.map(response[0], function (entry) {
-            return _.values(entry);
-        }));
+        return _.flatten(_.pluck(response.rows, 'table_name'));
     });
 }
 

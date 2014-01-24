@@ -3,7 +3,6 @@
     <a class="{{#if featured}}featured{{else}}unfeatured{{/if}}" href="#" title="{{#if featured}}Unfeature{{else}}Feature{{/if}} this post">
         <span class="hidden">Star</span>
     </a>
-    {{! TODO: JavaScript toggle featured/unfeatured}}
     <small>
         <span class="status">{{#if published}}Published{{else}}Written{{/if}}</span>
         <span class="normal">by</span>
@@ -53,7 +52,7 @@
     <div class="no-posts-box">
         <div class="no-posts">
             <h3>You Haven't Written Any Posts Yet!</h3>
-            <form action="{{url}}/ghost/editor/"><button class="button-add large" title="New Post">Write a new Post</button></form>
+            <form action="{{adminUrl}}/editor/"><button class="button-add large" title="New Post">Write a new Post</button></form>
         </div>
     </div>
 {{/unless}}

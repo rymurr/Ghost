@@ -6,12 +6,12 @@ var config        = require('../config'),
     mailer        = require('../mail'),
     errors        = require('../errorHandling'),
     storage       = require('../storage'),
+    updateCheck   = require('../update-check'),
 
     adminNavbar,
     adminControllers,
     loginSecurity = [];
 
- // TODO: combine path/navClass to single "slug(?)" variable with no prefix
 adminNavbar = {
     content: {
         name: 'Content',
@@ -59,7 +59,8 @@ adminControllers = {
                 return res.send(url);
             })
             .otherwise(function (e) {
-                return errors.logError(e);
+                errors.logError(e);
+                return res.send(500, e.message);
             });
     },
     'login': function (req, res) {
@@ -72,16 +73,17 @@ adminControllers = {
     },
     'auth': function (req, res) {
         var currentTime = process.hrtime()[0],
+            remoteAddress = req.connection.remoteAddress,
             denied = '';
         loginSecurity = _.filter(loginSecurity, function (ipTime) {
             return (ipTime.time + 2 > currentTime);
         });
         denied = _.find(loginSecurity, function (ipTime) {
-            return (ipTime.ip === req.connection.remoteAddress);
+            return (ipTime.ip === remoteAddress);
         });
 
         if (!denied) {
-            loginSecurity.push({ip: req.connection.remoteAddress, time: process.hrtime()[0]});
+            loginSecurity.push({ip: remoteAddress, time: currentTime});
             api.users.check({email: req.body.email, pw: req.body.password}).then(function (user) {
                 req.session.regenerate(function (err) {
                     if (!err) {
@@ -90,7 +92,11 @@ adminControllers = {
                         if (req.body.redirect) {
                             redirect += decodeURIComponent(req.body.redirect);
                         }
-
+                        // If this IP address successfully logs in we
+                        // can remove it from the array of failed login attempts.
+                        loginSecurity = _.reject(loginSecurity, function (ipTime) {
+                            return ipTime.ip === remoteAddress;
+                        });
                         res.json(200, {redirect: redirect});
                     }
                 });
@@ -132,6 +138,27 @@ adminControllers = {
             password: password
         }).then(function (user) {
             api.settings.edit('email', email).then(function () {
+                var message = {
+                    to: email,
+                    subject: 'Your New Ghost Blog',
+                    html: '<p><strong>Hello!</strong></p>' +
+                          '<p>Good news! You\'ve successfully created a brand new Ghost blog over on ' + config().url + '</p>' +
+                          '<p>You can log in to your admin account with the following details:</p>' +
+                          '<p> Email Address: ' + email + '<br>' +
+                          'Password: The password you chose when you signed up</p>' +
+                          '<p>Keep this email somewhere safe for future reference, and have fun!</p>' +
+                          '<p>xoxo</p>' +
+                          '<p>Team Ghost<br>' +
+                          '<a href="https://ghost.org">https://ghost.org</a></p>'
+                };
+                mailer.send(message).otherwise(function (error) {
+                    errors.logError(
+                        error.message,
+                        "Unable to send welcome email, your blog will continue to function.",
+                        "Please see http://docs.ghost.org/mail/ for instructions on configuring email."
+                    );
+                });
+
                 req.session.regenerate(function (err) {
                     if (!err) {
                         if (req.session.user === undefined) {
@@ -184,7 +211,6 @@ adminControllers = {
 
         }, function failure(error) {
             // TODO: This is kind of sketchy, depends on magic string error.message from Bookshelf.
-            // TODO: It's debatable whether we want to just tell the user we sent the email in this case or not, we are giving away sensitive info here.
             if (error && error.message === 'EmptyResponse') {
                 error.message = "Invalid email address";
             }
@@ -236,7 +262,6 @@ adminControllers = {
                 res.json(200, {redirect: config.paths().subdir + '/ghost/signin/'});
             });
         }).otherwise(function (err) {
-            // TODO: Better error message if we can tell whether the passwords didn't match or something
             res.json(401, {error: err.message});
         });
     },
@@ -256,10 +281,18 @@ adminControllers = {
     },
     'index': function (req, res) {
         /*jslint unparam:true*/
-        res.render('content', {
-            bodyClass: 'manage',
-            adminNav: setSelected(adminNavbar, 'content')
-        });
+        function renderIndex() {
+            res.render('content', {
+                bodyClass: 'manage',
+                adminNav: setSelected(adminNavbar, 'content')
+            });
+        }
+
+        when.join(
+            updateCheck(res),
+            when(renderIndex())
+        // an error here should just get logged
+        ).otherwise(errors.logError);
     },
     'editor': function (req, res) {
         if (req.params.id !== undefined) {
@@ -282,9 +315,7 @@ adminControllers = {
         });
     },
     'settings': function (req, res, next) {
-
-        // TODO: Centralise list/enumeration of settings panes, so we don't
-        // run into trouble in future.
+        // TODO: Centralise list/enumeration of settings panes, so we don't run into trouble in future.
         var allowedSections = ['', 'general', 'user'],
             section = req.url.replace(/(^\/ghost\/settings[\/]*|\/$)/ig, '');
 
@@ -297,7 +328,7 @@ adminControllers = {
             adminNav: setSelected(adminNavbar, 'settings')
         });
     },
-    'debug': { /* ugly temporary stuff for managing the app before it's properly finished */
+    'debug': {
         index: function (req, res) {
             /*jslint unparam:true*/
             res.render('debug', {

@@ -58,7 +58,7 @@ User = ghostBookshelf.Model.extend({
 
         if (!this.get('slug')) {
             // Generating a slug requires a db call to look for conflicting slugs
-            return this.generateSlug(User, this.get('name'))
+            return ghostBookshelf.Model.generateSlug(User, this.get('name'))
                 .then(function (slug) {
                     self.set({slug: slug});
                 });
@@ -67,11 +67,13 @@ User = ghostBookshelf.Model.extend({
 
     saving: function () {
 
-        this.set('name', this.sanitize('name'));
-        this.set('email', this.sanitize('email').toLocaleLowerCase());
-        this.set('location', this.sanitize('location'));
-        this.set('website', this.sanitize('website'));
-        this.set('bio', this.sanitize('bio'));
+        // disabling sanitization until we can implement a better version
+        // this.set('name', this.sanitize('name'));
+        // this.set('email', this.sanitize('email').toLocaleLowerCase());
+        // this.set('location', this.sanitize('location'));
+        // this.set('website', this.sanitize('website'));
+        // this.set('bio', this.sanitize('bio'));
+        this.set('email', this.get('email').toLocaleLowerCase());
 
         return ghostBookshelf.Model.prototype.saving.apply(this, arguments);
     },
@@ -362,7 +364,7 @@ User = ghostBookshelf.Model.extend({
                             "?d=404",
             checkPromise = when.defer();
 
-        http.get(gravatarUrl, function (res) {
+        http.get('http:' + gravatarUrl, function (res) {
             if (res.statusCode !== 404) {
                 userData.image = gravatarUrl;
             }

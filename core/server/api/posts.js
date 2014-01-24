@@ -12,6 +12,7 @@ posts = {
 
     // **takes:** filter / pagination parameters
     browse: function browse(options) {
+        options = options || {};
 
         // **returns:** a promise for a page of posts in a json object
         //return dataProvider.Post.findPage(options);
@@ -44,6 +45,15 @@ posts = {
             }
             return when.reject({errorCode: 404, message: 'Post not found'});
 
+        });
+    },
+
+    getSlug: function getSlug(args) {
+        return dataProvider.Base.Model.generateSlug(dataProvider.Post, args.title, {status: 'all'}).then(function (slug) {
+            if (slug) {
+                return slug;
+            }
+            return when.reject({errorCode: 500, message: 'Could not generate slug'});
         });
     },
 
@@ -106,9 +116,7 @@ posts = {
         return canThis(this.user).remove.post(args.id).then(function () {
             return when(posts.read({id : args.id, status: 'all'})).then(function (result) {
                 return dataProvider.Post.destroy(args.id).then(function () {
-                    var deletedObj = {};
-                    deletedObj.id = result.id;
-                    deletedObj.slug = result.slug;
+                    var deletedObj = result;
                     return deletedObj;
                 });
             });

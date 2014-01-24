@@ -5,6 +5,12 @@
         },
         "dbHash": {
             "defaultValue": null
+        },
+        "nextUpdateCheck": {
+            "defaultValue": null
+        },
+        "displayUpdateNotification": {
+            "defaultValue": false
         }
     },
     "blog": {
@@ -62,11 +68,11 @@
             "defaultValue": "casper"
         }
     },
-    "plugin": {
-        "activePlugins": {
+    "app": {
+        "activeApps": {
             "defaultValue": "[]"
         },
-        "installedPlugins": {
+        "installedApps": {
             "defaultValue": "[]"
         }
     }

@@ -6,7 +6,11 @@ var path = require('path'),
 
 config = {
     development: {
+<<<<<<< HEAD
         url: 'http://rymurr.com',
+=======
+        url: 'http://loftypen.com',
+>>>>>>> master
         mail: {
             transport: 'SES',
             options: {

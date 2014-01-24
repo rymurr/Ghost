@@ -1,32 +1,29 @@
-// If no env is set, default to development
-// This needs to be above all other require()
-// modules to ensure config gets right setting.
-
 // Module dependencies
-var config       = require('./config'),
-    express      = require('express'),
-    when         = require('when'),
-    _            = require('underscore'),
-    semver       = require('semver'),
-    fs           = require('fs'),
-    errors       = require('./errorHandling'),
-    plugins      = require('./plugins'),
-    path         = require('path'),
-    Polyglot     = require('node-polyglot'),
-    mailer       = require('./mail'),
-    helpers      = require('./helpers'),
-    middleware   = require('./middleware'),
-    routes       = require('./routes'),
-    packageInfo  = require('../../package.json'),
-    models        = require('./models'),
-    permissions   = require('./permissions'),
-    uuid          = require('node-uuid'),
-    api           = require('./api'),
-    hbs          = require('express-hbs'),
+var crypto      = require('crypto'),
+    express     = require('express'),
+    hbs         = require('express-hbs'),
+    fs          = require('fs'),
+    uuid        = require('node-uuid'),
+    path        = require('path'),
+    Polyglot    = require('node-polyglot'),
+    semver      = require('semver'),
+    _           = require('underscore'),
+    when        = require('when'),
+
+    api         = require('./api'),
+    config      = require('./config'),
+    errors      = require('./errorHandling'),
+    helpers     = require('./helpers'),
+    mailer      = require('./mail'),
+    middleware  = require('./middleware'),
+    models      = require('./models'),
+    permissions = require('./permissions'),
+    apps        = require('./apps'),
+    routes      = require('./routes'),
+    packageInfo = require('../../package.json'),
+
 
 // Variables
-    setup,
-    init,
     dbHash;
 
 // If we're in development mode, require "when/console/monitor"
@@ -74,21 +71,20 @@ function initDbHashAndFirstRun() {
 }
 
 // Sets up the express server instance.
-// Instantiates the ghost singleton,
-// helpers, routes, middleware, and plugins.
+// Instantiates the ghost singleton, helpers, routes, middleware, and apps.
 // Finally it starts the http server.
 function setup(server) {
+
+    // create a hash for cache busting assets
+    var assetHash = (crypto.createHash('md5').update(packageInfo.version + Date.now()).digest('hex')).substring(0, 10);
 
     // Set up Polygot instance on the require module
     Polyglot.instance = new Polyglot();
 
     // ### Initialisation
-    when.join(
-        // Initialise the models
-        models.init(),
-        // Calculate paths
-        config.paths.update(config().url)
-    ).then(function () {
+
+    // Initialise the models
+    models.init().then(function () {
         // Populate any missing default settings
         return models.Settings.populateDefaults();
     }).then(function () {
@@ -112,6 +108,7 @@ function setup(server) {
         var adminHbs = hbs.create();
 
         // ##Configuration
+        server.set('version hash', assetHash);
 
         // return the correct mime type for woff filess
         express['static'].mime.define({'application/font-woff': ['woff']});
@@ -124,7 +121,7 @@ function setup(server) {
         server.set('admin view engine', adminHbs.express3({partialsDir: config.paths().adminViews + 'partials'}));
 
         // Load helpers
-        helpers.loadCoreHelpers(adminHbs);
+        helpers.loadCoreHelpers(adminHbs, assetHash);
 
         // ## Middleware
         middleware(server, dbHash);
@@ -203,8 +200,8 @@ function setup(server) {
 
         }
 
-        // Initialize plugins then start the server
-        plugins.init().then(function () {
+        // Initialize apps then start the server
+        apps.init().then(function () {
 
             // ## Start Ghost App
             if (getSocket()) {
@@ -215,7 +212,7 @@ function setup(server) {
                         getSocket(),
                         startGhost
                     );
-                    fs.chmod(getSocket(), '0744');
+                    fs.chmod(getSocket(), '0660');
                 });
 
             } else {

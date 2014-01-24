@@ -18,7 +18,11 @@ var middleware = require('./middleware'),
     BSStore     = require('../bookshelf-session'),
     models      = require('../models'),
 
-    expressServer;
+    expressServer,
+    ONE_HOUR_S  = 60 * 60,
+    ONE_YEAR_S  = 365 * 24 * ONE_HOUR_S,
+    ONE_HOUR_MS = ONE_HOUR_S * 1000,
+    ONE_YEAR_MS = 365 * 24 * ONE_HOUR_MS;
 
 // ##Custom Middleware
 
@@ -29,9 +33,8 @@ function ghostLocals(req, res, next) {
     // Make sure we have a locals value.
     res.locals = res.locals || {};
     res.locals.version = packageInfo.version;
-    res.locals.path = req.path;
-    // Strip off the subdir part of the path
-    res.locals.ghostRoot = req.path.replace(config.paths().subdir, '');
+    // relative path from the URL, not including subdir
+    res.locals.relativeUrl = req.path.replace(config.paths().subdir, '');
 
     if (res.isAdmin) {
         res.locals.csrfToken = req.csrfToken();
@@ -89,7 +92,7 @@ function initViews(req, res, next) {
 function activateTheme(activeTheme) {
     var hbsOptions,
         stackLocation = _.indexOf(expressServer.stack, _.find(expressServer.stack, function (stackItem) {
-            return stackItem.route === '' && stackItem.handle.name === 'settingEnabled';
+            return stackItem.route === config.paths().subdir && stackItem.handle.name === 'settingEnabled';
         }));
 
     // clear the view cache
@@ -99,7 +102,6 @@ function activateTheme(activeTheme) {
     expressServer.enable(expressServer.get('activeTheme'));
     if (stackLocation) {
         expressServer.stack[stackLocation].handle = middleware.whenEnabled(expressServer.get('activeTheme'), middleware.staticTheme());
-        expressServer.stack[stackLocation].route = config.paths().subdir;
     }
 
     // set view engine
@@ -111,7 +113,7 @@ function activateTheme(activeTheme) {
     expressServer.set('theme view engine', hbs.express3(hbsOptions));
 
     // Update user error template
-    errors.updateActiveTheme(activeTheme);
+    errors.updateActiveTheme(activeTheme, config.paths().availableThemes[activeTheme].hasOwnProperty('error'));
 }
 
  // ### ManageAdminAndTheme Middleware
@@ -187,9 +189,7 @@ function checkSSL(req, res, next) {
 }
 
 module.exports = function (server, dbHash) {
-    var oneHour = 60 * 60 * 1000,
-        oneYear = 365 * 24 * oneHour,
-        subdir = config.paths().subdir,
+    var subdir = config.paths().subdir,
         corePath = config.paths().corePath,
         cookie;
 
@@ -207,16 +207,10 @@ module.exports = function (server, dbHash) {
     // Favicon
     expressServer.use(subdir, express.favicon(corePath + '/shared/favicon.ico'));
 
-    // Shared static config
-    expressServer.use(subdir + '/shared', express['static'](path.join(corePath, '/shared')));
-
+    // Static assets
+    expressServer.use(subdir + '/shared', express['static'](path.join(corePath, '/shared'), {maxAge: ONE_HOUR_MS}));
     expressServer.use(subdir + '/content/images', storage.get_storage().serve());
-
-    // Serve our built scripts; can't use /scripts here because themes already are
-    expressServer.use(subdir + '/built/scripts', express['static'](path.join(corePath, '/built/scripts'), {
-        // Put a maxAge of one year on built scripts
-        maxAge: oneYear
-    }));
+    expressServer.use(subdir + '/ghost/scripts', express['static'](path.join(corePath, '/built/scripts'), {maxAge: ONE_YEAR_MS}));
 
     // First determine whether we're serving admin or theme content
     expressServer.use(manageAdminAndTheme);
@@ -224,25 +218,25 @@ module.exports = function (server, dbHash) {
     // Force SSL
     expressServer.use(checkSSL);
 
+
     // Admin only config
-    expressServer.use(subdir + '/ghost', middleware.whenEnabled('admin', express['static'](path.join(corePath, '/client/assets'))));
+    expressServer.use(subdir + '/ghost', middleware.whenEnabled('admin', express['static'](path.join(corePath, '/client/assets'), {maxAge: ONE_YEAR_MS})));
 
     // Theme only config
-    expressServer.use(middleware.whenEnabled(expressServer.get('activeTheme'), middleware.staticTheme()));
+    expressServer.use(subdir, middleware.whenEnabled(expressServer.get('activeTheme'), middleware.staticTheme()));
 
     // Add in all trailing slashes
-    expressServer.use(slashes());
+    expressServer.use(slashes(true, {headers: {'Cache-Control': 'public, max-age=' + ONE_YEAR_S}}));
 
+    // Body parsing
     expressServer.use(express.json());
     expressServer.use(express.urlencoded());
 
-    expressServer.use(subdir + '/ghost/upload/', middleware.busboy);
-    expressServer.use(subdir + '/ghost/api/v0.1/db/', middleware.busboy);
-
-    // Session handling
+    // ### Sessions
+    // we need the trailing slash in the cookie path. Session handling *must* be after the slash handling
     cookie = {
-        path: subdir + '/ghost',
-        maxAge: 12 * oneHour
+        path: subdir + '/ghost/',
+        maxAge: 12 * ONE_HOUR_MS
     };
 
     // if SSL is forced, add secure flag to cookie
@@ -259,17 +253,23 @@ module.exports = function (server, dbHash) {
         cookie: cookie
     }));
 
-    //enable express csrf protection
+    // enable express csrf protection
     expressServer.use(middleware.conditionalCSRF);
+
     // local data
     expressServer.use(ghostLocals);
-    // So on every request we actually clean out reduntant passive notifications from the server side
+    // So on every request we actually clean out redundant passive notifications from the server side
     expressServer.use(middleware.cleanNotifications);
-
      // Initialise the views
     expressServer.use(initViews);
 
-    // process the application routes
+
+    // ### Caching
+    expressServer.use(middleware.cacheControl('public'));
+    expressServer.use('/api/', middleware.cacheControl('private'));
+    expressServer.use('/ghost/', middleware.cacheControl('private'));
+
+    // ### Routing
     expressServer.use(subdir, expressServer.router);
 
     // ### Error handling

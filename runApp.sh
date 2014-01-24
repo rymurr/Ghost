@@ -4,8 +4,13 @@
 python getCreds.py
 #put this hostname into the list of backups, add the backup method
 curl --key client.key --cert client.crt --cacert server.pem -L https://$ETCDHOST:$ETCDPORT/v2/keys/backups/$HOSTNAME -XPUT -d value=22 -k
+<<<<<<< HEAD
 #put this hostname in the ghost-ryan section of the hipache config
 curl --key client.key --cert client.crt --cacert server.pem -L https://$ETCDHOST:$ETCDPORT/v2/keys/hipache/ghost-ryan/$HOSTNAME -XPUT -d value=2368 -k
+=======
+#put this hostname in the ghost-cort section of the hipache config
+curl --key client.key --cert client.crt --cacert server.pem -L https://$ETCDHOST:$ETCDPORT/v2/keys/hipache/ghost-cort/$HOSTNAME -XPUT -d value=2368 -k
+>>>>>>> master
 #get SES config from etcd
 secret=`curl --key client.key --cert client.crt --cacert server.pem -L https://$ETCDHOST:$ETCDPORT/v2/keys/ghostAWSSecret -k|cut -d':' -f5|cut -d'"' -f2`
 key=`curl --key client.key --cert client.crt --cacert server.pem -L https://$ETCDHOST:$ETCDPORT/v2/keys/ghostAWSKey -k|cut -d':' -f5|cut -d'"' -f2`

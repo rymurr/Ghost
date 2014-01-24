@@ -4,20 +4,23 @@ var _           = require('underscore'),
     fs          = require('fs'),
     configPaths = require('./config/paths'),
     path        = require('path'),
+    when        = require('when'),
     errors,
 
     // Paths for views
     defaultErrorTemplatePath = path.resolve(configPaths().adminViews, 'user-error.hbs'),
     userErrorTemplatePath    = path.resolve(configPaths().themePath, 'error.hbs'),
-    userErrorTemplateExists;
+    userErrorTemplateExists   = false,
+
+    ONE_HOUR_S  = 60 * 60;
 
 /**
  * Basic error handling helpers
  */
 errors = {
-    updateActiveTheme: function (activeTheme) {
+    updateActiveTheme: function (activeTheme, hasErrorTemplate) {
         userErrorTemplatePath = path.resolve(configPaths().themePath, activeTheme, 'error.hbs');
-        userErrorTemplateExists = undefined;
+        userErrorTemplateExists = hasErrorTemplate;
     },
 
     throwError: function (err) {
@@ -30,6 +33,12 @@ errors = {
         }
 
         throw err;
+    },
+
+    // ## Reject Error
+    // Used to pass through promise errors when we want to handle them at a later time
+    rejectError: function (err) {
+        return when.reject(err);
     },
 
     logWarn: function (warn, context, help) {
@@ -54,7 +63,11 @@ errors = {
 
     logError: function (err, context, help) {
         var stack = err ? err.stack : null;
-        err = err.message || err || 'Unknown';
+        if (err) {
+            err = err.message || err || 'An unknown error occurred.';
+        } else {
+            err = 'An unknown error occurred.';
+        }
         // TODO: Logging framework hookup
         // Eventually we'll have better logging which will know about envs
         if ((process.env.NODE_ENV === 'development' ||
@@ -163,25 +176,14 @@ errors = {
         }
 
         // We're not admin and the template doesn't exist. Render the default.
-        if (userErrorTemplateExists === false) {
-            return renderErrorInt(defaultErrorTemplatePath);
-        }
-
-        // userErrorTemplateExists is undefined, which means we
-        // haven't yet checked for it. Do so now!
-        fs.stat(userErrorTemplatePath, function (err, stat) {
-            userErrorTemplateExists = !err;
-            if (userErrorTemplateExists) {
-                return renderErrorInt();
-            }
-
-            renderErrorInt(defaultErrorTemplatePath);
-        });
+        return renderErrorInt(defaultErrorTemplatePath);
     },
 
     error404: function (req, res, next) {
         var message = res.isAdmin && req.session.user ? "No Ghost Found" : "Page Not Found";
 
+        // 404 errors should be briefly cached
+        res.set({'Cache-Control': 'public, max-age=' + ONE_HOUR_S});
         if (req.method === 'GET') {
             this.renderErrorPage(404, message, req, res, next);
         } else {
@@ -190,6 +192,13 @@ errors = {
     },
 
     error500: function (err, req, res, next) {
+        // 500 errors should never be cached
+        res.set({'Cache-Control': 'no-cache, private, no-store, must-revalidate, max-stale=0, post-check=0, pre-check=0'});
+
+        if (err.status === 404) {
+            return this.error404(req, res, next);
+        }
+
         if (req.method === 'GET') {
             if (!err || !(err instanceof Error)) {
                 next();

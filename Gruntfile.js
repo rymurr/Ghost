@@ -23,8 +23,8 @@ var path           = require('path'),
         'content/images/README.md',
         '!content/themes/**',
         'content/themes/casper/**',
-        '!content/plugins/**',
-        'content/plugins/README.md',
+        '!content/apps/**',
+        'content/apps/README.md',
         '!node_modules/**',
         '!core/test/**',
         '!core/client/assets/sass/**',
@@ -249,6 +249,10 @@ var path           = require('path'),
 
                 api: {
                     src: ['core/test/functional/api/*_test.js']
+                },
+
+                routes: {
+                    src: ['core/test/functional/routes/*_test.js']
                 }
             },
 
@@ -792,7 +796,6 @@ var path           = require('path'),
                 'handlebars',
                 'concat',
                 'uglify',
-                'changelog',
                 'clean:release',
                 'copy:release',
                 'compress:release'
@@ -827,12 +830,14 @@ var path           = require('path'),
 
         grunt.registerTask('test-api', 'Run functional api tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'express:test', 'mochacli:api', 'express:test:stop']);
 
-        grunt.registerTask('validate', 'Run tests and lint code', ['jslint', 'test-unit', 'test-api', 'test-integration', 'test-functional']);
+        grunt.registerTask('test-routes', 'Run functional route tests (mocha)', ['clean:test', 'setTestEnv', 'loadConfig', 'express:test', 'mochacli:routes', 'express:test:stop']);
+
+        grunt.registerTask('validate', 'Run tests and lint code', ['jslint', 'test-routes', 'test-unit', 'test-api', 'test-integration', 'test-functional']);
 
 
         // ### Coverage report for Unit and Integration Tests
 
-        grunt.registerTask('test-coverage', 'Generate unit and integration (mocha) tests coverage report', ['clean:test', 'setTestEnv', 'loadConfig', 'express:test', 'shell:coverage']);
+        grunt.registerTask('test-coverage', 'Generate unit and integration (mocha) tests coverage report', ['clean:test', 'setTestEnv', 'loadConfig', 'shell:coverage']);
 
 
         // ### Documentation

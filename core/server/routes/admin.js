@@ -1,13 +1,10 @@
 var admin       = require('../controllers/admin'),
-    api         = require('../api'),
     config      = require('../config'),
-    middleware  = require('../middleware').middleware,
-    url         = require('url');
+    middleware  = require('../middleware').middleware;
 
 module.exports = function (server) {
     var subdir = config.paths().subdir;
     // ### Admin routes
-    /* TODO: put these somewhere in admin */
     server.get('/logout/', function redirect(req, res) {
         /*jslint unparam:true*/
         res.redirect(301, subdir + '/ghost/signout/');
@@ -45,8 +42,7 @@ module.exports = function (server) {
     server.get('/ghost/settings*', middleware.auth, admin.settings);
     server.get('/ghost/debug/', middleware.auth, admin.debug.index);
 
-    // We don't want to register bodyParser globally b/c of security concerns, so use multipart only here
-    server.post('/ghost/upload/', middleware.auth, admin.uploader);
+    server.post('/ghost/upload/', middleware.auth, middleware.busboy, admin.uploader);
 
     // redirect to /ghost and let that do the authentication to prevent redirects to /ghost//admin etc.
     server.get(/\/((ghost-admin|admin|wp-admin|dashboard|signin)\/?)$/, function (req, res) {

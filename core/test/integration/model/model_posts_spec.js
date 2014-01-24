@@ -255,6 +255,18 @@ describe('Post Model', function () {
         }).then(null, done);
     });
 
+    it('can generate a safe slug when a reserved keyword is used', function(done) {
+        var newPost = {
+            title: 'rss',
+            markdown: 'Test Content 1'
+        };
+
+        PostModel.add(newPost).then(function (createdPost) {
+            createdPost.get('slug').should.not.equal('rss');
+            done();
+        });
+    });
+
     it('can generate slugs without non-ascii characters', function (done) {
         var newPost = {
             title: 'भुते धडकी भरवणारा आहेत',
@@ -377,12 +389,13 @@ describe('Post Model', function () {
         }).then(null, done);
     });
 
-    it('should sanitize the title', function (done) {
-        new PostModel().fetch().then(function (model) {
-            return model.set({'title': "</title></head><body><script>alert('blogtitle');</script>"}).save();
-        }).then(function (saved) {
-                saved.get('title').should.eql("&lt;/title&gt;&lt;/head>&lt;body&gt;[removed]alert&#40;'blogtitle'&#41;;[removed]");
-                done();
-            }).otherwise(done);
-    });
+    // disabling sanitization until we can implement a better version
+    // it('should sanitize the title', function (done) {
+    //    new PostModel().fetch().then(function (model) {
+    //        return model.set({'title': "</title></head><body><script>alert('blogtitle');</script>"}).save();
+    //    }).then(function (saved) {
+    //        saved.get('title').should.eql("&lt;/title&gt;&lt;/head>&lt;body&gt;[removed]alert&#40;'blogtitle'&#41;;[removed]");
+    //        done();
+    //    }).otherwise(done);
+    // });
 });
